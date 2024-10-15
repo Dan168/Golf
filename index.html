@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>v2 = slow-mo</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; max-width: 800px; margin: 0 auto; }
+        #videoContainer { display: flex; justify-content: space-around; margin-top: 20px; }
+        video, canvas { max-width: 45%; }
+        .controls { margin-top: 20px; }
+        input[type="range"] { width: 200px; }
+        button { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+<h1>v2 - slow-mo</h1>
+<input type="file" id="fileInput" accept="video/*">
+<div id="videoContainer">
+    <video id="originalVideo" playsinline webkit-playsinline></video>
+    <canvas id="mirroredVideo"></canvas>
+</div>
+
+<div class="controls">
+    <label for="speedControl">Playback Speed: </label>
+    <input type="range" id="speedControl" min="0.1" max="1" step="0.1" value="1">
+    <span id="speedValue">1x</span>
+</div>
+
+<button id="playPauseButton">Play</button>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const originalVideo = document.getElementById('originalVideo');
+    const mirroredCanvas = document.getElementById('mirroredVideo');
+    const ctx = mirroredCanvas.getContext('2d');
+    const speedControl = document.getElementById('speedControl');
+    const speedValue = document.getElementById('speedValue');
+    const playPauseButton = document.getElementById('playPauseButton');
+
+    // Handle video file upload
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        const videoURL = URL.createObjectURL(file);
+        originalVideo.src = videoURL;
+
+        originalVideo.onloadedmetadata = () => {
+            mirroredCanvas.width = originalVideo.videoWidth;
+            mirroredCanvas.height = originalVideo.videoHeight;
+        };
+    });
+
+    // Custom play/pause button functionality
+    playPauseButton.addEventListener('click', () => {
+        if (originalVideo.paused) {
+            originalVideo.play();
+            playPauseButton.textContent = 'Pause';
+        } else {
+            originalVideo.pause();
+            playPauseButton.textContent = 'Play';
+        }
+    });
+
+    // Update playback speed
+    speedControl.addEventListener('input', (e) => {
+        const speed = e.target.value;
+        originalVideo.playbackRate = speed;
+        speedValue.textContent = speed + 'x';
+    });
+
+    // Render the mirrored video on the canvas
+    originalVideo.addEventListener('play', function() {
+        function step() {
+            if (!originalVideo.paused && !originalVideo.ended) {
+                ctx.save();
+                ctx.scale(-1, 1);
+                ctx.drawImage(originalVideo, -mirroredCanvas.width, 0, mirroredCanvas.width, mirroredCanvas.height);
+                ctx.restore();
+                requestAnimationFrame(step);
+            }
+        }
+        requestAnimationFrame(step);
+    });
+
+    // Update canvas when seeking or pausing
+    originalVideo.addEventListener('seeked', updateMirroredVideo);
+    originalVideo.addEventListener('pause', updateMirroredVideo);
+
+    function updateMirroredVideo() {
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.drawImage(originalVideo, -mirroredCanvas.width, 0, mirroredCanvas.width, mirroredCanvas.height);
+        ctx.restore();
+    }
+</script>
+</body>
+</html>
