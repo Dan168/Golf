@@ -3,78 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>v2 = slow-mo</title>
+    <title>Video Editor</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 0;
+            padding: 0;
+            background: #f4f4f4;
+        }
+
+        .app {
+            max-width: 800px;
+            margin: auto;
             padding: 20px;
-            display: flex;
         }
-        .toolbar {
-            width: 60px;
-            padding: 10px;
-            background: #f0f0f0;
-            border-radius: 4px;
-            margin-right: 20px;
-        }
-        .tool-button {
-            width: 40px;
-            height: 40px;
-            margin: 5px;
-            cursor: pointer;
-            background: white;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        .tool-button.active {
-            background: #2196F3;
-            color: white;
-        }
-        .main-content {
-            flex-grow: 1;
+
+        header {
             text-align: center;
+            margin-bottom: 20px;
         }
-        .canvas-container {
-            position: relative;
-            display: inline-block;
-        }
-        canvas {
-            max-width: 90%;
-            max-height: 80vh;
-        }
-        #drawingCanvas {
-            position: absolute;
-            left: 0;
-            top: 0;
-        }
+
         .controls {
-            margin-top: 20px;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            gap: 15px;
+            gap: 10px;
+            margin-bottom: 20px;
         }
-        .control-group {
+
+        .playback, .time, .speed {
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        input[type="range"] {
-            width: 300px;
+
+        canvas {
+            border: 1px solid #ccc;
+            display: block;
+            margin: auto;
+            background-color: transparent;
         }
+
+        .canvas-container {
+            position: relative;
+        }
+
+        #drawingCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .tools {
+            text-align: center;
+            margin-top: 10px;
+        }
+
         button {
-            padding: 8px 20px;
-            margin: 0 5px;
-            cursor: pointer;
+            padding: 8px 16px;
+            margin: 5px;
             border: none;
             border-radius: 4px;
+            cursor: pointer;
             background: #2196F3;
             color: white;
         }
+
         button:hover {
             background: #1976D2;
         }
+
         button:disabled {
             background: #ccc;
             cursor: not-allowed;
@@ -82,177 +79,216 @@
     </style>
 </head>
 <body>
-<div class="toolbar">
-    <button class="tool-button active" id="lineButton">✏️</button>
-    <button class="tool-button" id="selectButton">👆</button>
-</div>
-<div class="main-content">
-    <h1>v2 - slow-mo</h1>
-    <input type="file" id="fileInput" accept="video/*">
-    <div class="canvas-container">
-        <canvas id="mirroredVideo"></canvas>
-        <canvas id="drawingCanvas"></canvas>
-    </div>
-    <div class="playback-controls">
-        <button id="playButton" disabled>Play</button>
-        <button id="pauseButton" disabled>Pause</button>
-    </div>
-    <div class="controls">
-        <div class="control-group">
-            <span id="currentTime">0:00</span>
-            <input type="range" id="progressSlider" min="0" max="100" value="0">
-            <span id="duration">0:00</span>
-        </div>
-        <div class="control-group">
-            <label for="speedControl">Speed: </label>
-            <input type="range" id="speedControl" min="0.1" max="1" step="0.1" value="1">
-            <span id="speedValue">1x</span>
-        </div>
-    </div>
+<div class="app">
+    <header>
+        <h1>Video Editor</h1>
+    </header>
+    <main>
+        <section class="controls">
+            <input type="file" id="fileInput" accept="video/*">
+            <div class="playback">
+                <button id="playButton" disabled>▶ Play</button>
+                <button id="pauseButton" disabled>⏸ Pause</button>
+            </div>
+            <div class="time">
+                <span id="currentTime">0:00</span>
+                <input type="range" id="progressSlider" min="0" max="100" value="0">
+                <span id="duration">0:00</span>
+            </div>
+            <div class="speed">
+                <label for="speedControl">Speed:</label>
+                <input type="range" id="speedControl" min="0.1" max="2" step="0.1" value="1">
+                <span id="speedValue">1x</span>
+            </div>
+        </section>
+        <section class="canvas-container">
+            <canvas id="videoCanvas"></canvas>
+            <canvas id="drawingCanvas"></canvas>
+        </section>
+        <section class="tools">
+            <button id="drawTool">✏️ Draw</button>
+            <button id="eraseTool">🧹 Erase</button>
+            <button id="clearButton">❌ Clear All</button>
+        </section>
+    </main>
 </div>
 <script>
-    const fileInput = document.getElementById('fileInput');
-    const mirroredCanvas = document.getElementById('mirroredVideo');
-    const drawingCanvas = document.getElementById('drawingCanvas');
-    const ctx = mirroredCanvas.getContext('2d');
-    const drawCtx = drawingCanvas.getContext('2d');
-    const speedControl = document.getElementById('speedControl');
-    const speedValue = document.getElementById('speedValue');
-    const progressSlider = document.getElementById('progressSlider');
-    const currentTimeDisplay = document.getElementById('currentTime');
-    const durationDisplay = document.getElementById('duration');
-    const playButton = document.getElementById('playButton');
-    const pauseButton = document.getElementById('pauseButton');
+    class VideoPlayer {
+        constructor(videoCanvas, drawingCanvas, progressSlider, speedControl) {
+            this.videoCanvas = videoCanvas;
+            this.videoContext = videoCanvas.getContext('2d');
+            this.drawingCanvas = drawingCanvas;
+            this.video = document.createElement('video');
+            this.video.style.display = 'none';
+            document.body.appendChild(this.video);
 
-    const video = document.createElement('video');
-    video.controls = false; // Disable default browser controls
-    video.style.display = 'none'; // Hide the video element
-    video.playsInline = true; // Prevent fullscreen behavior on iOS
-    document.body.appendChild(video);
+            this.progressSlider = progressSlider;
+            this.speedControl = speedControl;
 
-    let animationFrame;
+            this.video.addEventListener('loadedmetadata', () => this.resizeCanvases());
+            this.video.addEventListener('timeupdate', () => {
+                this.progressSlider.value = this.video.currentTime;
+            });
 
-    fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        const videoURL = URL.createObjectURL(file);
-        video.src = videoURL;
+            this.video.addEventListener('seeked', () => this.renderFrame());
+        }
 
-        video.onloadedmetadata = () => {
-            mirroredCanvas.width = video.videoWidth;
-            mirroredCanvas.height = video.videoHeight;
-            drawingCanvas.width = video.videoWidth;
-            drawingCanvas.height = video.videoHeight;
+        loadVideo(file) {
+            const url = URL.createObjectURL(file);
+            this.video.src = url;
+            this.video.addEventListener('loadedmetadata', () => {
+                this.progressSlider.max = this.video.duration;
+            });
+        }
 
-            progressSlider.max = Math.floor(video.duration);
-            durationDisplay.textContent = formatTime(video.duration);
+        play() {
+            this.video.play();
+            this.renderLoop();
+        }
 
-            playButton.disabled = false;
-            pauseButton.disabled = true;
+        pause() {
+            this.video.pause();
+        }
 
-            // Draw the first frame
-            updateMirroredVideo();
-        };
-    });
+        setSpeed(speed) {
+            this.video.playbackRate = speed;
+        }
 
-    function updateMirroredVideo() {
-        ctx.save();
-        ctx.scale(-1, 1); // Flip horizontally for mirrored effect
-        ctx.drawImage(video, -mirroredCanvas.width, 0, mirroredCanvas.width, mirroredCanvas.height);
-        ctx.restore();
+        seek(time) {
+            this.video.currentTime = time;
+        }
 
-        if (!video.paused && !video.ended) {
-            animationFrame = requestAnimationFrame(updateMirroredVideo);
+        renderFrame() {
+            this.videoContext.clearRect(0, 0, this.videoCanvas.width, this.videoCanvas.height); // Clear the canvas
+            this.videoContext.drawImage(this.video, 0, 0, this.videoCanvas.width, this.videoCanvas.height); // Draw the video
+        }
+
+        renderLoop() {
+            if (!this.video.paused && !this.video.ended) {
+                this.renderFrame();
+                requestAnimationFrame(() => this.renderLoop());
+            }
+        }
+
+        resizeCanvases() {
+            this.videoCanvas.width = this.video.videoWidth;
+            this.videoCanvas.height = this.video.videoHeight;
+
+            this.drawingCanvas.width = this.video.videoWidth;
+            this.drawingCanvas.height = this.video.videoHeight;
+
+            // Scale drawing canvas coordinates to match the video size
+            this.drawingCanvas.getContext('2d').scale(
+                this.drawingCanvas.width / this.video.videoWidth,
+                this.drawingCanvas.height / this.video.videoHeight
+            );
         }
     }
 
+    class DrawingTool {
+        constructor(canvas) {
+            this.canvas = canvas;
+            this.context = canvas.getContext('2d');
+            this.mode = 'draw';
+            this.isDrawing = false;
+
+            canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
+            canvas.addEventListener('mousemove', (e) => this.draw(e));
+            canvas.addEventListener('mouseup', () => this.stopDrawing());
+        }
+
+        setMode(mode) {
+            this.mode = mode;
+        }
+
+        clear() {
+            this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+
+        startDrawing(e) {
+            this.isDrawing = true;
+            const { offsetX, offsetY } = this.getCoordinates(e);
+            this.context.beginPath();
+            this.context.moveTo(offsetX, offsetY);
+        }
+
+        draw(e) {
+            if (!this.isDrawing) return;
+
+            const { offsetX, offsetY } = this.getCoordinates(e);
+            this.context.lineTo(offsetX, offsetY);
+            this.context.strokeStyle = this.mode === 'erase' ? 'white' : 'red';
+            this.context.lineWidth = this.mode === 'erase' ? 10 : 2;
+            this.context.stroke();
+        }
+
+        stopDrawing() {
+            this.isDrawing = false;
+        }
+
+        getCoordinates(event) {
+            const rect = this.canvas.getBoundingClientRect();
+            return {
+                offsetX: event.clientX - rect.left,
+                offsetY: event.clientY - rect.top
+            };
+        }
+    }
+
+    const fileInput = document.getElementById('fileInput');
+    const videoCanvas = document.getElementById('videoCanvas');
+    const drawingCanvas = document.getElementById('drawingCanvas');
+    const playButton = document.getElementById('playButton');
+    const pauseButton = document.getElementById('pauseButton');
+    const progressSlider = document.getElementById('progressSlider');
+    const speedControl = document.getElementById('speedControl');
+    const speedValue = document.getElementById('speedValue');
+    const clearButton = document.getElementById('clearButton');
+    const drawTool = document.getElementById('drawTool');
+    const eraseTool = document.getElementById('eraseTool');
+
+    const videoPlayer = new VideoPlayer(videoCanvas, drawingCanvas, progressSlider, speedControl);
+    const drawingTool = new DrawingTool(drawingCanvas);
+
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        videoPlayer.loadVideo(file);
+        playButton.disabled = false;
+        pauseButton.disabled = true;
+    });
+
     playButton.addEventListener('click', () => {
-        video.play();
+        videoPlayer.play();
         playButton.disabled = true;
         pauseButton.disabled = false;
-
-        // Start the animation loop
-        updateMirroredVideo();
     });
 
     pauseButton.addEventListener('click', () => {
-        video.pause();
+        videoPlayer.pause();
         playButton.disabled = false;
         pauseButton.disabled = true;
-
-        // Stop the animation loop
-        cancelAnimationFrame(animationFrame);
     });
 
-    speedControl.addEventListener('input', (e) => {
-        const speed = e.target.value;
-        video.playbackRate = speed; // Adjust video playback speed
-        speedValue.textContent = `${speed}x`;
+    progressSlider.addEventListener('input', () => {
+        videoPlayer.seek(progressSlider.value);
     });
 
-    video.addEventListener('timeupdate', () => {
-        progressSlider.value = video.currentTime;
-        currentTimeDisplay.textContent = formatTime(video.currentTime);
+    speedControl.addEventListener('input', () => {
+        speedValue.textContent = `${speedControl.value}x`;
+        videoPlayer.setSpeed(speedControl.value);
     });
 
-    progressSlider.addEventListener('input', (e) => {
-        const time = e.target.value;
-        video.currentTime = time; // Seek the video
-        currentTimeDisplay.textContent = formatTime(time);
-        updateMirroredVideo(); // Ensure the canvas updates immediately
+    clearButton.addEventListener('click', () => {
+        drawingTool.clear();
     });
 
-    // Format time for display
-    function formatTime(seconds) {
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
-
-    // Drawing Logic
-    let isDrawing = false;
-    let lastX, lastY;
-
-    drawingCanvas.addEventListener('mousedown', (e) => {
-        const coords = getCanvasCoordinates(e);
-        isDrawing = true;
-        lastX = coords.x;
-        lastY = coords.y;
+    drawTool.addEventListener('click', () => {
+        drawingTool.setMode('draw');
     });
 
-    drawingCanvas.addEventListener('mousemove', (e) => {
-        if (!isDrawing) return;
-
-        const coords = getCanvasCoordinates(e);
-        drawCtx.beginPath();
-        drawCtx.moveTo(lastX, lastY);
-        drawCtx.lineTo(coords.x, coords.y);
-        drawCtx.strokeStyle = '#FF0000';
-        drawCtx.lineWidth = 2;
-        drawCtx.stroke();
-
-        lastX = coords.x;
-        lastY = coords.y;
+    eraseTool.addEventListener('click', () => {
+        drawingTool.setMode('erase');
     });
-
-    drawingCanvas.addEventListener('mouseup', () => {
-        isDrawing = false;
-    });
-
-    drawingCanvas.addEventListener('mouseleave', () => {
-        isDrawing = false;
-    });
-
-    function getCanvasCoordinates(e) {
-        const rect = drawingCanvas.getBoundingClientRect();
-        const scaleX = drawingCanvas.width / rect.width;
-        const scaleY = drawingCanvas.height / rect.height;
-        return {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
-        };
-    }
 </script>
-
-
 </body>
 </html>
