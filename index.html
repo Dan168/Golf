@@ -201,17 +201,30 @@
             this.context = canvas.getContext('2d');
             this.isDrawing = false;
             this.currentColor = 'red';
+            this.lastX = 0;
+            this.lastY = 0;
 
             // Prevent default touch behaviors
-            this.canvas.addEventListener('touchstart', this.preventDefaultTouch);
-            this.canvas.addEventListener('touchmove', this.preventDefaultTouch);
-            this.canvas.addEventListener('touchend', this.preventDefaultTouch);
+            this.canvas.addEventListener('touchstart', this.preventDefaultTouch, { passive: false });
+            this.canvas.addEventListener('touchmove', this.preventDefaultTouch, { passive: false });
+            this.canvas.addEventListener('touchend', this.preventDefaultTouch, { passive: false });
 
             // Add pointer events for better cross-device support
             this.canvas.addEventListener('pointerdown', (e) => this.startDrawing(e));
             this.canvas.addEventListener('pointermove', (e) => this.draw(e));
             this.canvas.addEventListener('pointerup', () => this.stopDrawing());
+            this.canvas.addEventListener('pointercancel', () => this.stopDrawing());
             this.canvas.addEventListener('pointerleave', () => this.stopDrawing());
+
+            // Support for mouse and touch events as fallback
+            this.canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
+            this.canvas.addEventListener('mousemove', (e) => this.draw(e));
+            this.canvas.addEventListener('mouseup', () => this.stopDrawing());
+            this.canvas.addEventListener('mouseout', () => this.stopDrawing());
+
+            this.canvas.addEventListener('touchstart', (e) => this.startDrawing(e.touches[0]));
+            this.canvas.addEventListener('touchmove', (e) => this.draw(e.touches[0]));
+            this.canvas.addEventListener('touchend', () => this.stopDrawing());
         }
 
         preventDefaultTouch(e) {
@@ -221,23 +234,39 @@
         startDrawing(e) {
             this.isDrawing = true;
             const { offsetX, offsetY } = this.getCoordinates(e);
+            this.lastX = offsetX;
+            this.lastY = offsetY;
+
             this.context.beginPath();
-            this.context.moveTo(offsetX, offsetY);
+            this.context.moveTo(this.lastX, this.lastY);
             this.context.strokeStyle = this.currentColor;
             this.context.lineWidth = 3;
             this.context.lineCap = 'round';
+            this.context.lineJoin = 'round';
         }
 
         draw(e) {
             if (!this.isDrawing) return;
             const { offsetX, offsetY } = this.getCoordinates(e);
+
+            // Use smooth drawing with quadratic curve
+            this.context.beginPath();
+            this.context.moveTo(this.lastX, this.lastY);
+            this.context.quadraticCurveTo(
+                this.lastX,
+                this.lastY,
+                (this.lastX + offsetX) / 2,
+                (this.lastY + offsetY) / 2
+            );
             this.context.lineTo(offsetX, offsetY);
             this.context.stroke();
+
+            this.lastX = offsetX;
+            this.lastY = offsetY;
         }
 
         stopDrawing() {
             this.isDrawing = false;
-            this.context.beginPath(); // Prevent connecting lines
         }
 
         getCoordinates(e) {
@@ -245,9 +274,13 @@
             const scaleX = this.canvas.width / rect.width;
             const scaleY = this.canvas.height / rect.height;
 
+            // Support both pointer and touch events
+            const clientX = e.clientX || e.pageX;
+            const clientY = e.clientY || e.pageY;
+
             return {
-                offsetX: (e.clientX - rect.left) * scaleX,
-                offsetY: (e.clientY - rect.top) * scaleY
+                offsetX: (clientX - rect.left) * scaleX,
+                offsetY: (clientY - rect.top) * scaleY
             };
         }
 
