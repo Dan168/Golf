@@ -29,6 +29,19 @@
             flex-direction: column;
             gap: 10px;
             margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        video {
+            max-width: 100%;
+            width: 100%;
+            height: auto;
         }
 
         canvas {
@@ -81,8 +94,13 @@
                 <button id="pauseButton" disabled>⏸ Pause</button>
                 <button id="flipButton">↔ Flip Video</button>
             </div>
+            <div>
+                <button id="drawButton">🖊 Draw</button>
+                <button id="clearButton">❌ Clear</button>
+            </div>
         </section>
-        <section class="canvas-container">
+        <section class="video-container">
+            <video id="videoElement" playsinline muted></video>
             <canvas id="videoCanvas"></canvas>
             <canvas id="drawingCanvas"></canvas>
         </section>
@@ -90,34 +108,29 @@
 </div>
 <script>
     class VideoPlayer {
-        constructor(videoCanvas, drawingCanvas) {
+        constructor(videoElement, videoCanvas, drawingCanvas) {
+            this.videoElement = videoElement;
             this.videoCanvas = videoCanvas;
             this.videoContext = videoCanvas.getContext('2d');
             this.drawingCanvas = drawingCanvas;
-            this.video = document.createElement('video');
-            this.video.setAttribute('playsinline', 'true'); // Prevent fullscreen
-            this.video.setAttribute('muted', 'true'); // Allow autoplay on iOS
-            this.video.style.display = 'none';
-            document.body.appendChild(this.video);
-
             this.flip = false; // Flip state
 
-            this.video.addEventListener('loadedmetadata', () => this.resizeCanvases());
-            this.video.addEventListener('timeupdate', () => this.renderFrame());
+            this.videoElement.addEventListener('loadedmetadata', () => this.resizeCanvases());
+            this.videoElement.addEventListener('timeupdate', () => this.renderFrame());
         }
 
         loadVideo(file) {
             const url = URL.createObjectURL(file);
-            this.video.src = url;
+            this.videoElement.src = url;
         }
 
         play() {
-            this.video.play();
+            this.videoElement.play();
             this.renderLoop();
         }
 
         pause() {
-            this.video.pause();
+            this.videoElement.pause();
         }
 
         toggleFlip() {
@@ -134,7 +147,7 @@
                 this.videoContext.scale(-1, 1);
             }
 
-            this.videoContext.drawImage(this.video, 0, 0, this.videoCanvas.width, this.videoCanvas.height);
+            this.videoContext.drawImage(this.videoElement, 0, 0, this.videoCanvas.width, this.videoCanvas.height);
 
             if (this.flip) {
                 this.videoContext.restore();
@@ -142,18 +155,26 @@
         }
 
         renderLoop() {
-            if (!this.video.paused && !this.video.ended) {
+            if (!this.videoElement.paused && !this.videoElement.ended) {
                 this.renderFrame();
                 requestAnimationFrame(() => this.renderLoop());
             }
         }
 
         resizeCanvases() {
-            this.videoCanvas.width = this.video.videoWidth;
-            this.videoCanvas.height = this.video.videoHeight;
+            const videoWidth = this.videoElement.videoWidth;
+            const videoHeight = this.videoElement.videoHeight;
 
-            this.drawingCanvas.width = this.video.videoWidth;
-            this.drawingCanvas.height = this.video.videoHeight;
+            // Resize video canvas to fit screen (maintain aspect ratio)
+            const maxWidth = window.innerWidth - 40; // Padding
+            const aspectRatio = videoWidth / videoHeight;
+            const newWidth = Math.min(maxWidth, videoWidth);
+            const newHeight = newWidth / aspectRatio;
+
+            this.videoCanvas.width = newWidth;
+            this.videoCanvas.height = newHeight;
+            this.drawingCanvas.width = newWidth;
+            this.drawingCanvas.height = newHeight;
         }
     }
 
@@ -215,13 +236,16 @@
     }
 
     const fileInput = document.getElementById('fileInput');
+    const videoElement = document.getElementById('videoElement');
     const videoCanvas = document.getElementById('videoCanvas');
     const drawingCanvas = document.getElementById('drawingCanvas');
     const playButton = document.getElementById('playButton');
     const pauseButton = document.getElementById('pauseButton');
     const flipButton = document.getElementById('flipButton');
+    const drawButton = document.getElementById('drawButton');
+    const clearButton = document.getElementById('clearButton');
 
-    const videoPlayer = new VideoPlayer(videoCanvas, drawingCanvas);
+    const videoPlayer = new VideoPlayer(videoElement, videoCanvas, drawingCanvas);
     const drawingTool = new DrawingTool(drawingCanvas);
 
     fileInput.addEventListener('change', (e) => {
@@ -245,6 +269,14 @@
 
     flipButton.addEventListener('click', () => {
         videoPlayer.toggleFlip();
+    });
+
+    drawButton.addEventListener('click', () => {
+        drawingTool.canvas.style.display = 'block';
+    });
+
+    clearButton.addEventListener('click', () => {
+        drawingTool.context.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
     });
 </script>
 </body>
