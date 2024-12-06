@@ -10,6 +10,7 @@
             margin: 0;
             padding: 0;
             background: #f4f4f4;
+            touch-action: none; /* Prevent page scroll during drawing */
         }
 
         .app {
@@ -30,12 +31,6 @@
             margin-bottom: 20px;
         }
 
-        .playback, .time, .speed {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
         canvas {
             border: 1px solid #ccc;
             display: block;
@@ -51,11 +46,6 @@
             position: absolute;
             top: 0;
             left: 0;
-        }
-
-        .tools {
-            text-align: center;
-            margin-top: 10px;
         }
 
         button {
@@ -86,59 +76,39 @@
     <main>
         <section class="controls">
             <input type="file" id="fileInput" accept="video/*">
-            <div class="playback">
+            <div>
                 <button id="playButton" disabled>▶ Play</button>
                 <button id="pauseButton" disabled>⏸ Pause</button>
-            </div>
-            <div class="time">
-                <span id="currentTime">0:00</span>
-                <input type="range" id="progressSlider" min="0" max="100" value="0">
-                <span id="duration">0:00</span>
-            </div>
-            <div class="speed">
-                <label for="speedControl">Speed:</label>
-                <input type="range" id="speedControl" min="0.1" max="2" step="0.1" value="1">
-                <span id="speedValue">1x</span>
+                <button id="flipButton">↔ Flip Video</button>
             </div>
         </section>
         <section class="canvas-container">
             <canvas id="videoCanvas"></canvas>
             <canvas id="drawingCanvas"></canvas>
         </section>
-        <section class="tools">
-            <button id="drawTool">✏️ Draw</button>
-            <button id="eraseTool">🧹 Erase</button>
-            <button id="clearButton">❌ Clear All</button>
-        </section>
     </main>
 </div>
 <script>
     class VideoPlayer {
-        constructor(videoCanvas, drawingCanvas, progressSlider, speedControl) {
+        constructor(videoCanvas, drawingCanvas) {
             this.videoCanvas = videoCanvas;
             this.videoContext = videoCanvas.getContext('2d');
             this.drawingCanvas = drawingCanvas;
             this.video = document.createElement('video');
+            this.video.setAttribute('playsinline', 'true'); // Prevent fullscreen
+            this.video.setAttribute('muted', 'true'); // Allow autoplay on iOS
             this.video.style.display = 'none';
             document.body.appendChild(this.video);
 
-            this.progressSlider = progressSlider;
-            this.speedControl = speedControl;
+            this.flip = false; // Flip state
 
             this.video.addEventListener('loadedmetadata', () => this.resizeCanvases());
-            this.video.addEventListener('timeupdate', () => {
-                this.progressSlider.value = this.video.currentTime;
-            });
-
-            this.video.addEventListener('seeked', () => this.renderFrame());
+            this.video.addEventListener('timeupdate', () => this.renderFrame());
         }
 
         loadVideo(file) {
             const url = URL.createObjectURL(file);
             this.video.src = url;
-            this.video.addEventListener('loadedmetadata', () => {
-                this.progressSlider.max = this.video.duration;
-            });
         }
 
         play() {
@@ -150,17 +120,25 @@
             this.video.pause();
         }
 
-        setSpeed(speed) {
-            this.video.playbackRate = speed;
-        }
-
-        seek(time) {
-            this.video.currentTime = time;
+        toggleFlip() {
+            this.flip = !this.flip;
+            this.renderFrame();
         }
 
         renderFrame() {
-            this.videoContext.clearRect(0, 0, this.videoCanvas.width, this.videoCanvas.height); // Clear the canvas
-            this.videoContext.drawImage(this.video, 0, 0, this.videoCanvas.width, this.videoCanvas.height); // Draw the video
+            this.videoContext.clearRect(0, 0, this.videoCanvas.width, this.videoCanvas.height);
+
+            if (this.flip) {
+                this.videoContext.save();
+                this.videoContext.translate(this.videoCanvas.width, 0);
+                this.videoContext.scale(-1, 1);
+            }
+
+            this.videoContext.drawImage(this.video, 0, 0, this.videoCanvas.width, this.videoCanvas.height);
+
+            if (this.flip) {
+                this.videoContext.restore();
+            }
         }
 
         renderLoop() {
@@ -176,12 +154,6 @@
 
             this.drawingCanvas.width = this.video.videoWidth;
             this.drawingCanvas.height = this.video.videoHeight;
-
-            // Scale drawing canvas coordinates to match the video size
-            this.drawingCanvas.getContext('2d').scale(
-                this.drawingCanvas.width / this.video.videoWidth,
-                this.drawingCanvas.height / this.video.videoHeight
-            );
         }
     }
 
@@ -189,20 +161,16 @@
         constructor(canvas) {
             this.canvas = canvas;
             this.context = canvas.getContext('2d');
-            this.mode = 'draw';
             this.isDrawing = false;
 
-            canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
-            canvas.addEventListener('mousemove', (e) => this.draw(e));
-            canvas.addEventListener('mouseup', () => this.stopDrawing());
-        }
+            this.canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
+            this.canvas.addEventListener('mousemove', (e) => this.draw(e));
+            this.canvas.addEventListener('mouseup', () => this.stopDrawing());
 
-        setMode(mode) {
-            this.mode = mode;
-        }
-
-        clear() {
-            this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            // Touch event listeners for iOS
+            this.canvas.addEventListener('touchstart', (e) => this.startDrawing(e));
+            this.canvas.addEventListener('touchmove', (e) => this.draw(e));
+            this.canvas.addEventListener('touchend', () => this.stopDrawing());
         }
 
         startDrawing(e) {
@@ -210,6 +178,7 @@
             const { offsetX, offsetY } = this.getCoordinates(e);
             this.context.beginPath();
             this.context.moveTo(offsetX, offsetY);
+            e.preventDefault(); // Prevent scrolling
         }
 
         draw(e) {
@@ -217,20 +186,30 @@
 
             const { offsetX, offsetY } = this.getCoordinates(e);
             this.context.lineTo(offsetX, offsetY);
-            this.context.strokeStyle = this.mode === 'erase' ? 'white' : 'red';
-            this.context.lineWidth = this.mode === 'erase' ? 10 : 2;
+            this.context.strokeStyle = 'red';
+            this.context.lineWidth = 2;
             this.context.stroke();
+            e.preventDefault(); // Prevent scrolling
         }
 
         stopDrawing() {
             this.isDrawing = false;
         }
 
-        getCoordinates(event) {
+        getCoordinates(e) {
             const rect = this.canvas.getBoundingClientRect();
+            if (e.touches) {
+                // Handle touch events
+                const touch = e.touches[0];
+                return {
+                    offsetX: touch.clientX - rect.left,
+                    offsetY: touch.clientY - rect.top,
+                };
+            }
+            // Handle mouse events
             return {
-                offsetX: event.clientX - rect.left,
-                offsetY: event.clientY - rect.top
+                offsetX: e.offsetX,
+                offsetY: e.offsetY,
             };
         }
     }
@@ -240,14 +219,9 @@
     const drawingCanvas = document.getElementById('drawingCanvas');
     const playButton = document.getElementById('playButton');
     const pauseButton = document.getElementById('pauseButton');
-    const progressSlider = document.getElementById('progressSlider');
-    const speedControl = document.getElementById('speedControl');
-    const speedValue = document.getElementById('speedValue');
-    const clearButton = document.getElementById('clearButton');
-    const drawTool = document.getElementById('drawTool');
-    const eraseTool = document.getElementById('eraseTool');
+    const flipButton = document.getElementById('flipButton');
 
-    const videoPlayer = new VideoPlayer(videoCanvas, drawingCanvas, progressSlider, speedControl);
+    const videoPlayer = new VideoPlayer(videoCanvas, drawingCanvas);
     const drawingTool = new DrawingTool(drawingCanvas);
 
     fileInput.addEventListener('change', (e) => {
@@ -269,25 +243,8 @@
         pauseButton.disabled = true;
     });
 
-    progressSlider.addEventListener('input', () => {
-        videoPlayer.seek(progressSlider.value);
-    });
-
-    speedControl.addEventListener('input', () => {
-        speedValue.textContent = `${speedControl.value}x`;
-        videoPlayer.setSpeed(speedControl.value);
-    });
-
-    clearButton.addEventListener('click', () => {
-        drawingTool.clear();
-    });
-
-    drawTool.addEventListener('click', () => {
-        drawingTool.setMode('draw');
-    });
-
-    eraseTool.addEventListener('click', () => {
-        drawingTool.setMode('erase');
+    flipButton.addEventListener('click', () => {
+        videoPlayer.toggleFlip();
     });
 </script>
 </body>
