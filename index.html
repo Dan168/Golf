@@ -10,7 +10,7 @@
             margin: 0;
             padding: 0;
             background: #f4f4f4;
-            touch-action: none; /* Prevent page scroll during drawing */
+            touch-action: manipulation; /* Improve touch interactions */
         }
 
         .app {
@@ -36,12 +36,16 @@
             position: relative;
             width: 100%;
             overflow: hidden;
+            display: flex;
+            justify-content: center;
         }
 
         video {
             max-width: 100%;
             width: 100%;
             height: auto;
+            transition: transform 0.3s ease-in-out;
+            object-fit: contain; /* Ensure video fits within container */
         }
 
         canvas {
@@ -49,26 +53,26 @@
             display: block;
             margin: auto;
             background-color: transparent;
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none; /* Allow interaction with video underneath */
         }
 
         .canvas-container {
             position: relative;
-        }
-
-        #drawingCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
+            width: 100%;
         }
 
         button {
-            padding: 8px 16px;
+            padding: 10px 20px;
             margin: 5px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             background: #2196F3;
             color: white;
+            touch-action: manipulation; /* Improve touch targets */
         }
 
         button:hover {
@@ -78,6 +82,22 @@
         button:disabled {
             background: #ccc;
             cursor: not-allowed;
+        }
+
+        .speed-control {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #fileInput {
+            margin-bottom: 10px;
+        }
+
+        /* Drawing mode indicator */
+        .drawing-mode {
+            background-color: #4CAF50;
         }
     </style>
 </head>
@@ -94,39 +114,46 @@
                 <button id="pauseButton" disabled>⏸ Pause</button>
                 <button id="flipButton">↔ Flip Video</button>
             </div>
+            <div class="speed-control">
+                <label for="speed">Playback Speed: </label>
+                <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1">
+                <span id="speedValue">1x</span>
+            </div>
             <div>
                 <button id="drawButton">🖊 Draw</button>
                 <button id="clearButton">❌ Clear</button>
+                <button id="colorButton">🎨 Color</button>
             </div>
         </section>
         <section class="video-container">
-            <video id="videoElement" playsinline muted></video>
-            <canvas id="videoCanvas"></canvas>
-            <canvas id="drawingCanvas"></canvas>
+            <div class="canvas-container">
+                <video id="videoElement" playsinline muted></video>
+                <canvas id="drawingCanvas"></canvas>
+            </div>
         </section>
     </main>
 </div>
 <script>
     class VideoPlayer {
-        constructor(videoElement, videoCanvas, drawingCanvas) {
+        constructor(videoElement, drawingCanvas) {
             this.videoElement = videoElement;
-            this.videoCanvas = videoCanvas;
-            this.videoContext = videoCanvas.getContext('2d');
             this.drawingCanvas = drawingCanvas;
-            this.flip = false; // Flip state
+            this.flip = false;
 
-            this.videoElement.addEventListener('loadedmetadata', () => this.resizeCanvases());
+            // Improve responsiveness
+            window.addEventListener('resize', () => this.resizeCanvas());
+            this.videoElement.addEventListener('loadedmetadata', () => this.resizeCanvas());
             this.videoElement.addEventListener('timeupdate', () => this.renderFrame());
         }
 
         loadVideo(file) {
             const url = URL.createObjectURL(file);
             this.videoElement.src = url;
+            this.videoElement.load(); // Ensure video is reloaded
         }
 
         play() {
             this.videoElement.play();
-            this.renderLoop();
         }
 
         pause() {
@@ -135,46 +162,36 @@
 
         toggleFlip() {
             this.flip = !this.flip;
-            this.renderFrame();
+            this.updateFlip();
+        }
+
+        updateFlip() {
+            if (this.flip) {
+                this.videoElement.style.transform = 'scaleX(-1)';
+            } else {
+                this.videoElement.style.transform = 'scaleX(1)';
+            }
+        }
+
+        setPlaybackSpeed(speed) {
+            this.videoElement.playbackRate = parseFloat(speed);
         }
 
         renderFrame() {
-            this.videoContext.clearRect(0, 0, this.videoCanvas.width, this.videoCanvas.height);
-
-            if (this.flip) {
-                this.videoContext.save();
-                this.videoContext.translate(this.videoCanvas.width, 0);
-                this.videoContext.scale(-1, 1);
-            }
-
-            this.videoContext.drawImage(this.videoElement, 0, 0, this.videoCanvas.width, this.videoCanvas.height);
-
-            if (this.flip) {
-                this.videoContext.restore();
-            }
+            const ctx = this.drawingCanvas.getContext('2d');
+            ctx.clearRect(0, 0, this.drawingCanvas.width, this.drawingCanvas.height);
         }
 
-        renderLoop() {
-            if (!this.videoElement.paused && !this.videoElement.ended) {
-                this.renderFrame();
-                requestAnimationFrame(() => this.renderLoop());
-            }
-        }
-
-        resizeCanvases() {
+        resizeCanvas() {
             const videoWidth = this.videoElement.videoWidth;
             const videoHeight = this.videoElement.videoHeight;
+            const containerWidth = this.videoElement.clientWidth;
+            const containerHeight = this.videoElement.clientHeight;
 
-            // Resize video canvas to fit screen (maintain aspect ratio)
-            const maxWidth = window.innerWidth - 40; // Padding
-            const aspectRatio = videoWidth / videoHeight;
-            const newWidth = Math.min(maxWidth, videoWidth);
-            const newHeight = newWidth / aspectRatio;
-
-            this.videoCanvas.width = newWidth;
-            this.videoCanvas.height = newHeight;
-            this.drawingCanvas.width = newWidth;
-            this.drawingCanvas.height = newHeight;
+            this.drawingCanvas.width = containerWidth;
+            this.drawingCanvas.height = containerHeight;
+            this.drawingCanvas.style.width = `${containerWidth}px`;
+            this.drawingCanvas.style.height = `${containerHeight}px`;
         }
     }
 
@@ -183,15 +200,22 @@
             this.canvas = canvas;
             this.context = canvas.getContext('2d');
             this.isDrawing = false;
+            this.currentColor = 'red';
 
-            this.canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
-            this.canvas.addEventListener('mousemove', (e) => this.draw(e));
-            this.canvas.addEventListener('mouseup', () => this.stopDrawing());
+            // Prevent default touch behaviors
+            this.canvas.addEventListener('touchstart', this.preventDefaultTouch);
+            this.canvas.addEventListener('touchmove', this.preventDefaultTouch);
+            this.canvas.addEventListener('touchend', this.preventDefaultTouch);
 
-            // Touch event listeners for iOS
-            this.canvas.addEventListener('touchstart', (e) => this.startDrawing(e));
-            this.canvas.addEventListener('touchmove', (e) => this.draw(e));
-            this.canvas.addEventListener('touchend', () => this.stopDrawing());
+            // Add pointer events for better cross-device support
+            this.canvas.addEventListener('pointerdown', (e) => this.startDrawing(e));
+            this.canvas.addEventListener('pointermove', (e) => this.draw(e));
+            this.canvas.addEventListener('pointerup', () => this.stopDrawing());
+            this.canvas.addEventListener('pointerleave', () => this.stopDrawing());
+        }
+
+        preventDefaultTouch(e) {
+            e.preventDefault();
         }
 
         startDrawing(e) {
@@ -199,54 +223,59 @@
             const { offsetX, offsetY } = this.getCoordinates(e);
             this.context.beginPath();
             this.context.moveTo(offsetX, offsetY);
-            e.preventDefault(); // Prevent scrolling
+            this.context.strokeStyle = this.currentColor;
+            this.context.lineWidth = 3;
+            this.context.lineCap = 'round';
         }
 
         draw(e) {
             if (!this.isDrawing) return;
-
             const { offsetX, offsetY } = this.getCoordinates(e);
             this.context.lineTo(offsetX, offsetY);
-            this.context.strokeStyle = 'red';
-            this.context.lineWidth = 2;
             this.context.stroke();
-            e.preventDefault(); // Prevent scrolling
         }
 
         stopDrawing() {
             this.isDrawing = false;
+            this.context.beginPath(); // Prevent connecting lines
         }
 
         getCoordinates(e) {
             const rect = this.canvas.getBoundingClientRect();
-            if (e.touches) {
-                // Handle touch events
-                const touch = e.touches[0];
-                return {
-                    offsetX: touch.clientX - rect.left,
-                    offsetY: touch.clientY - rect.top,
-                };
-            }
-            // Handle mouse events
+            const scaleX = this.canvas.width / rect.width;
+            const scaleY = this.canvas.height / rect.height;
+
             return {
-                offsetX: e.offsetX,
-                offsetY: e.offsetY,
+                offsetX: (e.clientX - rect.left) * scaleX,
+                offsetY: (e.clientY - rect.top) * scaleY
             };
+        }
+
+        setColor(color) {
+            this.currentColor = color;
+        }
+
+        clear() {
+            this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
         }
     }
 
     const fileInput = document.getElementById('fileInput');
     const videoElement = document.getElementById('videoElement');
-    const videoCanvas = document.getElementById('videoCanvas');
     const drawingCanvas = document.getElementById('drawingCanvas');
     const playButton = document.getElementById('playButton');
     const pauseButton = document.getElementById('pauseButton');
     const flipButton = document.getElementById('flipButton');
     const drawButton = document.getElementById('drawButton');
     const clearButton = document.getElementById('clearButton');
+    const colorButton = document.getElementById('colorButton');
+    const speedControl = document.getElementById('speed');
 
-    const videoPlayer = new VideoPlayer(videoElement, videoCanvas, drawingCanvas);
+    const videoPlayer = new VideoPlayer(videoElement, drawingCanvas);
     const drawingTool = new DrawingTool(drawingCanvas);
+
+    // Initially hide drawing canvas
+    drawingCanvas.style.display = 'none';
 
     fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -271,12 +300,27 @@
         videoPlayer.toggleFlip();
     });
 
+    speedControl.addEventListener('input', (e) => {
+        const speed = e.target.value;
+        document.getElementById('speedValue').textContent = `${speed}x`;
+        videoPlayer.setPlaybackSpeed(speed);
+    });
+
     drawButton.addEventListener('click', () => {
-        drawingTool.canvas.style.display = 'block';
+        drawingCanvas.style.display = drawingCanvas.style.display === 'none' ? 'block' : 'none';
+        drawButton.classList.toggle('drawing-mode');
     });
 
     clearButton.addEventListener('click', () => {
-        drawingTool.context.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+        drawingTool.clear();
+    });
+
+    colorButton.addEventListener('click', () => {
+        const colors = ['red', 'blue', 'green', 'black', 'purple'];
+        const currentIndex = colors.indexOf(drawingTool.currentColor);
+        const nextColor = colors[(currentIndex + 1) % colors.length];
+        drawingTool.setColor(nextColor);
+        colorButton.style.backgroundColor = nextColor;
     });
 </script>
 </body>
