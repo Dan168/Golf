@@ -125,9 +125,9 @@
     const pauseButton = document.getElementById('pauseButton');
 
     const video = document.createElement('video');
-    video.controls = false;
-    video.style.display = 'none';
-    video.playsInline = true; // Prevents full-screen behavior on iOS
+    video.controls = false; // Disable default browser controls
+    video.style.display = 'none'; // Hide the video element
+    video.playsInline = true; // Prevent fullscreen behavior on iOS
     document.body.appendChild(video);
 
     let animationFrame;
@@ -156,7 +156,7 @@
 
     function updateMirroredVideo() {
         ctx.save();
-        ctx.scale(-1, 1); // Flip horizontally
+        ctx.scale(-1, 1); // Flip horizontally for mirrored effect
         ctx.drawImage(video, -mirroredCanvas.width, 0, mirroredCanvas.width, mirroredCanvas.height);
         ctx.restore();
 
@@ -183,13 +183,76 @@
         cancelAnimationFrame(animationFrame);
     });
 
+    speedControl.addEventListener('input', (e) => {
+        const speed = e.target.value;
+        video.playbackRate = speed; // Adjust video playback speed
+        speedValue.textContent = `${speed}x`;
+    });
+
+    video.addEventListener('timeupdate', () => {
+        progressSlider.value = video.currentTime;
+        currentTimeDisplay.textContent = formatTime(video.currentTime);
+    });
+
+    progressSlider.addEventListener('input', (e) => {
+        const time = e.target.value;
+        video.currentTime = time; // Seek the video
+        currentTimeDisplay.textContent = formatTime(time);
+        updateMirroredVideo(); // Ensure the canvas updates immediately
+    });
+
     // Format time for display
     function formatTime(seconds) {
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
+
+    // Drawing Logic
+    let isDrawing = false;
+    let lastX, lastY;
+
+    drawingCanvas.addEventListener('mousedown', (e) => {
+        const coords = getCanvasCoordinates(e);
+        isDrawing = true;
+        lastX = coords.x;
+        lastY = coords.y;
+    });
+
+    drawingCanvas.addEventListener('mousemove', (e) => {
+        if (!isDrawing) return;
+
+        const coords = getCanvasCoordinates(e);
+        drawCtx.beginPath();
+        drawCtx.moveTo(lastX, lastY);
+        drawCtx.lineTo(coords.x, coords.y);
+        drawCtx.strokeStyle = '#FF0000';
+        drawCtx.lineWidth = 2;
+        drawCtx.stroke();
+
+        lastX = coords.x;
+        lastY = coords.y;
+    });
+
+    drawingCanvas.addEventListener('mouseup', () => {
+        isDrawing = false;
+    });
+
+    drawingCanvas.addEventListener('mouseleave', () => {
+        isDrawing = false;
+    });
+
+    function getCanvasCoordinates(e) {
+        const rect = drawingCanvas.getBoundingClientRect();
+        const scaleX = drawingCanvas.width / rect.width;
+        const scaleY = drawingCanvas.height / rect.height;
+        return {
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
+        };
+    }
 </script>
+
 
 </body>
 </html>
