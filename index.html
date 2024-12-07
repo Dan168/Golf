@@ -10,7 +10,8 @@
             margin: 0;
             padding: 0;
             background: #f4f4f4;
-            touch-action: manipulation; /* Improve touch interactions */
+            touch-action: manipulation;
+            overscroll-behavior: contain;
         }
 
         .app {
@@ -38,6 +39,7 @@
             overflow: hidden;
             display: flex;
             justify-content: center;
+            background-color: black;
         }
 
         video {
@@ -45,18 +47,15 @@
             width: 100%;
             height: auto;
             transition: transform 0.3s ease-in-out;
-            object-fit: contain; /* Ensure video fits within container */
+            object-fit: contain;
         }
 
         canvas {
-            border: 1px solid #ccc;
-            display: block;
-            margin: auto;
-            background-color: transparent;
             position: absolute;
             top: 0;
             left: 0;
-            pointer-events: none; /* Allow interaction with video underneath */
+            pointer-events: none;
+            z-index: 10;
         }
 
         .canvas-container {
@@ -72,7 +71,8 @@
             cursor: pointer;
             background: #2196F3;
             color: white;
-            touch-action: manipulation; /* Improve touch targets */
+            touch-action: manipulation;
+            transition: background-color 0.3s ease;
         }
 
         button:hover {
@@ -95,16 +95,35 @@
             margin-bottom: 10px;
         }
 
-        /* Drawing mode indicator */
         .drawing-mode {
             background-color: #4CAF50;
+        }
+
+        .color-palette {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .color-option {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .color-option.selected {
+            border-color: white;
+            box-shadow: 0 0 0 2px black;
         }
     </style>
 </head>
 <body>
 <div class="app">
     <header>
-        <h1>Video Editor</h1>
+        <h1>Golf V3</h1>
     </header>
     <main>
         <section class="controls">
@@ -122,7 +141,13 @@
             <div>
                 <button id="drawButton">🖊 Draw</button>
                 <button id="clearButton">❌ Clear</button>
-                <button id="colorButton">🎨 Color</button>
+            </div>
+            <div class="color-palette">
+                <div class="color-option" data-color="red" style="background-color: red;"></div>
+                <div class="color-option" data-color="blue" style="background-color: blue;"></div>
+                <div class="color-option" data-color="green" style="background-color: green;"></div>
+                <div class="color-option" data-color="black" style="background-color: black;"></div>
+                <div class="color-option" data-color="purple" style="background-color: purple;"></div>
             </div>
         </section>
         <section class="video-container">
@@ -143,13 +168,12 @@
             // Improve responsiveness
             window.addEventListener('resize', () => this.resizeCanvas());
             this.videoElement.addEventListener('loadedmetadata', () => this.resizeCanvas());
-            this.videoElement.addEventListener('timeupdate', () => this.renderFrame());
         }
 
         loadVideo(file) {
             const url = URL.createObjectURL(file);
             this.videoElement.src = url;
-            this.videoElement.load(); // Ensure video is reloaded
+            this.videoElement.load();
         }
 
         play() {
@@ -166,32 +190,28 @@
         }
 
         updateFlip() {
-            if (this.flip) {
-                this.videoElement.style.transform = 'scaleX(-1)';
-            } else {
-                this.videoElement.style.transform = 'scaleX(1)';
-            }
+            this.videoElement.style.transform = this.flip ? 'scaleX(-1)' : 'scaleX(1)';
         }
 
         setPlaybackSpeed(speed) {
             this.videoElement.playbackRate = parseFloat(speed);
         }
 
-        renderFrame() {
-            const ctx = this.drawingCanvas.getContext('2d');
-            ctx.clearRect(0, 0, this.drawingCanvas.width, this.drawingCanvas.height);
-        }
-
         resizeCanvas() {
-            const videoWidth = this.videoElement.videoWidth;
-            const videoHeight = this.videoElement.videoHeight;
             const containerWidth = this.videoElement.clientWidth;
             const containerHeight = this.videoElement.clientHeight;
 
+            // Set canvas to exact same size and position as video
             this.drawingCanvas.width = containerWidth;
             this.drawingCanvas.height = containerHeight;
             this.drawingCanvas.style.width = `${containerWidth}px`;
             this.drawingCanvas.style.height = `${containerHeight}px`;
+
+            // Ensure canvas is positioned exactly over the video
+            this.drawingCanvas.style.position = 'absolute';
+            this.drawingCanvas.style.top = `${this.videoElement.offsetTop}px`;
+            this.drawingCanvas.style.left = `${this.videoElement.offsetLeft}px`;
+            this.drawingCanvas.style.zIndex = '10';
         }
     }
 
@@ -201,44 +221,45 @@
             this.context = canvas.getContext('2d');
             this.isDrawing = false;
             this.currentColor = 'red';
-            this.lastX = 0;
-            this.lastY = 0;
+            this.isPenActive = false;
 
-            // Prevent default touch behaviors
-            this.canvas.addEventListener('touchstart', this.preventDefaultTouch, { passive: false });
-            this.canvas.addEventListener('touchmove', this.preventDefaultTouch, { passive: false });
-            this.canvas.addEventListener('touchend', this.preventDefaultTouch, { passive: false });
-
-            // Add pointer events for better cross-device support
+            // Pointer events for drawing
             this.canvas.addEventListener('pointerdown', (e) => this.startDrawing(e));
             this.canvas.addEventListener('pointermove', (e) => this.draw(e));
             this.canvas.addEventListener('pointerup', () => this.stopDrawing());
             this.canvas.addEventListener('pointercancel', () => this.stopDrawing());
             this.canvas.addEventListener('pointerleave', () => this.stopDrawing());
 
-            // Support for mouse and touch events as fallback
-            this.canvas.addEventListener('mousedown', (e) => this.startDrawing(e));
-            this.canvas.addEventListener('mousemove', (e) => this.draw(e));
-            this.canvas.addEventListener('mouseup', () => this.stopDrawing());
-            this.canvas.addEventListener('mouseout', () => this.stopDrawing());
-
-            this.canvas.addEventListener('touchstart', (e) => this.startDrawing(e.touches[0]));
-            this.canvas.addEventListener('touchmove', (e) => this.draw(e.touches[0]));
-            this.canvas.addEventListener('touchend', () => this.stopDrawing());
+            // Enable drawing on the canvas
+            this.canvas.style.pointerEvents = 'auto';
         }
 
-        preventDefaultTouch(e) {
-            e.preventDefault();
+        activatePen() {
+            this.isPenActive = true;
+            this.canvas.style.cursor = 'crosshair';
+        }
+
+        deactivatePen() {
+            this.isPenActive = false;
+            this.canvas.style.cursor = 'default';
+        }
+
+        getCoordinates(e) {
+            const rect = this.canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
         }
 
         startDrawing(e) {
+            if (!this.isPenActive) return;
+
             this.isDrawing = true;
-            const { offsetX, offsetY } = this.getCoordinates(e);
-            this.lastX = offsetX;
-            this.lastY = offsetY;
+            const { x, y } = this.getCoordinates(e);
 
             this.context.beginPath();
-            this.context.moveTo(this.lastX, this.lastY);
+            this.context.moveTo(x, y);
             this.context.strokeStyle = this.currentColor;
             this.context.lineWidth = 3;
             this.context.lineCap = 'round';
@@ -246,42 +267,16 @@
         }
 
         draw(e) {
-            if (!this.isDrawing) return;
-            const { offsetX, offsetY } = this.getCoordinates(e);
+            if (!this.isDrawing || !this.isPenActive) return;
+            const { x, y } = this.getCoordinates(e);
 
-            // Use smooth drawing with quadratic curve
-            this.context.beginPath();
-            this.context.moveTo(this.lastX, this.lastY);
-            this.context.quadraticCurveTo(
-                this.lastX,
-                this.lastY,
-                (this.lastX + offsetX) / 2,
-                (this.lastY + offsetY) / 2
-            );
-            this.context.lineTo(offsetX, offsetY);
+            this.context.lineTo(x, y);
             this.context.stroke();
-
-            this.lastX = offsetX;
-            this.lastY = offsetY;
         }
 
         stopDrawing() {
             this.isDrawing = false;
-        }
-
-        getCoordinates(e) {
-            const rect = this.canvas.getBoundingClientRect();
-            const scaleX = this.canvas.width / rect.width;
-            const scaleY = this.canvas.height / rect.height;
-
-            // Support both pointer and touch events
-            const clientX = e.clientX || e.pageX;
-            const clientY = e.clientY || e.pageY;
-
-            return {
-                offsetX: (clientX - rect.left) * scaleX,
-                offsetY: (clientY - rect.top) * scaleY
-            };
+            this.context.beginPath();
         }
 
         setColor(color) {
@@ -293,6 +288,7 @@
         }
     }
 
+    // DOM Element References
     const fileInput = document.getElementById('fileInput');
     const videoElement = document.getElementById('videoElement');
     const drawingCanvas = document.getElementById('drawingCanvas');
@@ -301,15 +297,17 @@
     const flipButton = document.getElementById('flipButton');
     const drawButton = document.getElementById('drawButton');
     const clearButton = document.getElementById('clearButton');
-    const colorButton = document.getElementById('colorButton');
     const speedControl = document.getElementById('speed');
+    const colorOptions = document.querySelectorAll('.color-option');
 
+    // Initialize video player and drawing tool
     const videoPlayer = new VideoPlayer(videoElement, drawingCanvas);
     const drawingTool = new DrawingTool(drawingCanvas);
 
-    // Initially hide drawing canvas
+    // Initially hide drawing canvas and disable pen
     drawingCanvas.style.display = 'none';
 
+    // Event Listeners
     fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         videoPlayer.loadVideo(file);
@@ -340,21 +338,40 @@
     });
 
     drawButton.addEventListener('click', () => {
-        drawingCanvas.style.display = drawingCanvas.style.display === 'none' ? 'block' : 'none';
-        drawButton.classList.toggle('drawing-mode');
+        const isDrawingNow = drawingCanvas.style.display !== 'none';
+
+        if (isDrawingNow) {
+            drawingCanvas.style.display = 'none';
+            drawButton.classList.remove('drawing-mode');
+            drawingTool.deactivatePen();
+        } else {
+            drawingCanvas.style.display = 'block';
+            drawButton.classList.add('drawing-mode');
+            drawingTool.activatePen();
+        }
     });
 
     clearButton.addEventListener('click', () => {
         drawingTool.clear();
     });
 
-    colorButton.addEventListener('click', () => {
-        const colors = ['red', 'blue', 'green', 'black', 'purple'];
-        const currentIndex = colors.indexOf(drawingTool.currentColor);
-        const nextColor = colors[(currentIndex + 1) % colors.length];
-        drawingTool.setColor(nextColor);
-        colorButton.style.backgroundColor = nextColor;
+    // Color Selection
+    colorOptions.forEach(option => {
+        option.addEventListener('click', () => {
+            // Remove selected class from all options
+            colorOptions.forEach(opt => opt.classList.remove('selected'));
+
+            // Add selected class to clicked option
+            option.classList.add('selected');
+
+            // Set drawing color
+            const color = option.dataset.color;
+            drawingTool.setColor(color);
+        });
     });
+
+    // Select red as default color
+    colorOptions[0].classList.add('selected');
 </script>
 </body>
 </html>
